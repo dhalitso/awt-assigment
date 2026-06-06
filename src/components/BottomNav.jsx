@@ -1,5 +1,5 @@
 import React from 'react';
-import { Home, Search, Plus, Heart, User } from 'lucide-react';
+import { Home, Search, Mail, Heart, User } from 'lucide-react';
 
 export default function BottomNav({
   currentTab,
@@ -10,58 +10,64 @@ export default function BottomNav({
   return (
     <nav className="bottom-nav">
       <div className="bottom-nav-inner">
-        <button
-          onClick={() => onTabChange('home')}
-          className={`bottom-nav-item btn-clean ${currentTab === 'home' ? 'active' : ''}`}
-          style={{ background: 'none', border: 'none' }}
-          aria-label="Ir para Página Inicial"
-        >
-          <Home size={22} />
-          <span className="bottom-nav-label">Início</span>
-        </button>
-
+        {/* Tab 1: Explorar (Search) */}
         <button
           onClick={() => onTabChange('search')}
           className={`bottom-nav-item btn-clean ${currentTab === 'search' ? 'active' : ''}`}
           style={{ background: 'none', border: 'none' }}
-          aria-label="Pesquisar Imóveis"
+          aria-label="Ir para Explorar Imóveis"
         >
           <Search size={22} />
-          <span className="bottom-nav-label">Pesquisar</span>
+          <span className="bottom-nav-label">Explorar</span>
         </button>
 
+        {/* Tab 2: Mensagem (Chats) */}
         <button
-          onClick={() => onTabChange('list-property')}
-          className={`bottom-nav-center-item btn-clean`}
-          style={{ border: 'none' }}
-          aria-label="Publicar Novo Imóvel"
+          onClick={() => onTabChange('messages')}
+          className={`bottom-nav-item btn-clean ${currentTab === 'messages' ? 'active' : ''}`}
+          style={{ background: 'none', border: 'none' }}
+          aria-label="Ver Mensagens"
         >
-          <Plus size={24} />
+          <Mail size={22} />
+          <span className="bottom-nav-label">Mensagem</span>
+          {unreadMessages > 0 && (
+            <span className="bottom-nav-badge" style={{ backgroundColor: 'var(--color-primary)' }}>{unreadMessages}</span>
+          )}
         </button>
 
+        {/* Tab 3: Ofertas (Home Feed) */}
+        <button
+          onClick={() => onTabChange('home')}
+          className={`bottom-nav-item btn-clean ${currentTab === 'home' ? 'active' : ''}`}
+          style={{ background: 'none', border: 'none' }}
+          aria-label="Ver Ofertas"
+        >
+          <Home size={22} />
+          <span className="bottom-nav-label">Ofertas</span>
+        </button>
+
+        {/* Tab 4: Favoritos (Saved Favorites) */}
         <button
           onClick={() => onTabChange('favorites')}
           className={`bottom-nav-item btn-clean ${currentTab === 'favorites' ? 'active' : ''}`}
           style={{ background: 'none', border: 'none' }}
-          aria-label="Ver Imóveis Salvos"
+          aria-label="Ver Favoritos"
         >
           <Heart size={22} />
-          <span className="bottom-nav-label">Salvos</span>
-          {unreadNotifications > 0 && (
-            <span className="bottom-nav-badge">{unreadNotifications}</span>
-          )}
+          <span className="bottom-nav-label">Favoritos</span>
         </button>
 
+        {/* Tab 5: Meu Perfil (Profile & Verification) */}
         <button
           onClick={() => onTabChange('profile')}
           className={`bottom-nav-item btn-clean ${currentTab === 'profile' ? 'active' : ''}`}
           style={{ background: 'none', border: 'none' }}
-          aria-label="Ver Perfil"
+          aria-label="Ver Meu Perfil"
         >
           <User size={22} />
-          <span className="bottom-nav-label">Perfil</span>
-          {unreadMessages > 0 && (
-            <span className="bottom-nav-badge" style={{ backgroundColor: 'var(--color-primary)' }}>{unreadMessages}</span>
+          <span className="bottom-nav-label">Meu Perfil</span>
+          {unreadNotifications > 0 && (
+            <span className="bottom-nav-badge">{unreadNotifications}</span>
           )}
         </button>
       </div>

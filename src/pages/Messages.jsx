@@ -198,9 +198,10 @@ export default function Messages({
             display: 'flex',
             alignItems: 'center',
             gap: '12px',
-            padding: '12px 0',
+            padding: '12px 16px',
             borderBottom: '1px solid var(--color-border)',
-            backgroundColor: 'var(--color-bg)'
+            backgroundColor: 'var(--color-surface)',
+            boxShadow: 'var(--shadow-sm)'
           }}>
             <button
               onClick={() => onSetActiveConversation(null)}
@@ -223,45 +224,52 @@ export default function Messages({
             <img
               src={activeConv.senderAvatar}
               alt={activeConv.sender}
-              style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover' }}
+              style={{ width: '40px', height: '40px', borderRadius: '50%', objectFit: 'cover', border: '1.5px solid var(--color-primary-light-active)' }}
             />
             <div style={{ flex: 1 }}>
-              <h4 style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--color-text)' }}>{activeConv.sender}</h4>
-              <span className="text-xs" style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.65rem' }}>
+              <h4 style={{ fontSize: '0.9rem', fontWeight: 800, color: 'var(--color-text)', margin: 0 }}>{activeConv.sender}</h4>
+              <span className="text-xs" style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.65rem', color: 'var(--color-success)', marginTop: '2px', fontWeight: 600 }}>
                 <span style={{ width: '6px', height: '6px', backgroundColor: 'var(--color-success)', borderRadius: '50%' }}></span>
-                Activo
+                Online
               </span>
             </div>
             <a
-              href={`tel:+258 84 123 4567`}
-              className="btn btn-outline btn-icon-only"
-              style={{ width: '36px', height: '36px', border: '1px solid var(--color-border)', backgroundColor: 'white' }}
+              href={`tel:+258841234567`}
+              className="btn-clean"
+              style={{
+                width: '38px',
+                height: '38px',
+                borderRadius: '50%',
+                border: '1px solid var(--color-border)',
+                backgroundColor: 'white',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                color: 'var(--color-text)'
+              }}
               aria-label="Telefonar para anunciante"
             >
-              <Phone size={14} />
+              <Phone size={16} />
             </a>
           </header>
 
-          {/* Pinned context card (Memory load reducer - Miller's Law) */}
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '10px',
-            padding: '10px 14px',
-            backgroundColor: 'var(--color-surface)',
-            borderBottom: '1px solid var(--color-border)',
-            boxShadow: 'var(--shadow-sm)'
-          }}>
+          {/* Pinned context card (CHAT MESSAGE.jpg style) */}
+          <div className="chat-property-strip">
             <img
               src={activeConv.propertyImage}
               alt=""
-              style={{ width: '40px', height: '40px', borderRadius: 'var(--radius-sm)', objectFit: 'cover' }}
+              style={{ width: '44px', height: '44px', borderRadius: '6px', objectFit: 'cover', border: '1px solid var(--color-border-dark)' }}
             />
             <div style={{ flex: 1, minWidth: 0 }}>
-              <h5 style={{ fontSize: '0.75rem', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <h5 style={{ fontSize: '0.8rem', fontWeight: 800, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {activeConv.propertyTitle}
               </h5>
-              <span style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--color-primary)' }}>{activeConv.propertyPrice}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px' }}>
+                <span style={{ fontSize: '0.85rem', fontWeight: 800, color: 'var(--color-primary)', margin: 0 }}>{activeConv.propertyPrice}</span>
+                <span style={{ width: '3px', height: '3px', borderRadius: '50%', backgroundColor: '#cbd5e1' }}></span>
+                <span style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)', fontWeight: 500 }}>Sommerschield, Maputo</span>
+              </div>
             </div>
           </div>
 
@@ -297,41 +305,34 @@ export default function Messages({
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Form message input controls */}
+          {/* Form message input controls (CHAT MESSAGE.jpg style) */}
           <form
             onSubmit={handleSendSubmit}
             style={{
-              padding: '12px var(--space-2)',
+              padding: '12px 16px',
               backgroundColor: 'var(--color-surface)',
               borderTop: '1px solid var(--color-border)',
               display: 'flex',
-              gap: '8px',
+              gap: '12px',
               alignItems: 'center'
             }}
           >
-            <input
-              type="text"
-              placeholder="Escreva uma mensagem..."
-              value={typedMessage}
-              onChange={(e) => setTypedMessage(e.target.value)}
-              style={{
-                flex: 1,
-                border: '1px solid var(--color-border-dark)',
-                borderRadius: 'var(--radius-md)',
-                padding: '10px 16px',
-                fontSize: '0.85rem',
-                outline: 'none',
-                color: 'var(--color-text)'
-              }}
-            />
+            <div className="chat-input-pill-wrapper" style={{ border: '1px solid var(--color-border-dark)' }}>
+              <input
+                type="text"
+                placeholder="Escreva uma mensagem..."
+                value={typedMessage}
+                onChange={(e) => setTypedMessage(e.target.value)}
+                className="chat-input-pill"
+              />
+            </div>
             <button
               type="submit"
-              className="btn btn-primary"
-              style={{ width: '40px', height: '40px', padding: 0, borderRadius: 'var(--radius-md)' }}
+              className="chat-send-btn-circle"
               disabled={!typedMessage.trim()}
               aria-label="Enviar mensagem"
             >
-              <Send size={16} />
+              <Send size={18} style={{ marginLeft: '2px' }} />
             </button>
           </form>
         </div>

@@ -8,6 +8,7 @@ import Profile from './pages/Profile';
 import Favorites from './pages/Favorites';
 import Notifications from './pages/Notifications';
 import Messages from './pages/Messages';
+import Onboarding from './pages/Onboarding';
 
 import {
   getStoredProperties,
@@ -25,7 +26,10 @@ import {
 
 export default function App() {
   // 1. Navigation & Flow State Machine
-  const [currentTab, setCurrentTab] = useState('home'); // home, search, list-property, favorites, profile
+  const [isOnboarded, setIsOnboarded] = useState(
+    localStorage.getItem("nopin_onboarded") === "true"
+  );
+  const [currentTab, setCurrentTab] = useState('home'); // home, search, list-property, favorites, profile, messages
   const [currentPage, setCurrentPage] = useState('feed'); // feed, detail, notifications, messages
   const [selectedPropertyId, setSelectedPropertyId] = useState(null);
   
@@ -128,7 +132,7 @@ export default function App() {
     
     if (existingConv) {
       setActiveConversationId(existingConv.id);
-      navigateTo('profile', 'messages', null, { conversationId: existingConv.id });
+      navigateTo('messages', 'feed', null, { conversationId: existingConv.id });
     } else {
       // Create a new mock conversation
       const newConvId = `c_new_${Date.now()}`;
@@ -152,7 +156,7 @@ export default function App() {
       localStorage.setItem("nopin_conversations", JSON.stringify(updatedConvs));
       setConversations(updatedConvs);
       setActiveConversationId(newConvId);
-      navigateTo('profile', 'messages', null, { conversationId: newConvId });
+      navigateTo('messages', 'feed', null, { conversationId: newConvId });
     }
   };
 
@@ -215,18 +219,6 @@ export default function App() {
       );
     }
 
-    if (currentPage === 'messages') {
-      return (
-        <Messages
-          conversations={conversations}
-          onSendMessage={handleSendMessage}
-          onBack={handleBack}
-          activeConversationId={activeConversationId}
-          onSetActiveConversation={setActiveConversationId}
-        />
-      );
-    }
-
     // Tab Router
     switch (currentTab) {
       case 'home':
@@ -252,6 +244,16 @@ export default function App() {
             onSelectProperty={(id) => navigateTo(null, 'detail', id)}
             initialFilters={searchFilters}
             onClearInitialFilters={handleClearSearchFilters}
+          />
+        );
+      case 'messages':
+        return (
+          <Messages
+            conversations={conversations}
+            onSendMessage={handleSendMessage}
+            onBack={() => handleTabChange('home')}
+            activeConversationId={activeConversationId}
+            onSetActiveConversation={setActiveConversationId}
           />
         );
       case 'list-property':
@@ -292,6 +294,21 @@ export default function App() {
         return <div>Tab não encontrada.</div>;
     }
   };
+
+  if (!isOnboarded) {
+    return (
+      <Onboarding
+        onComplete={(userData) => {
+          localStorage.setItem("nopin_onboarded", "true");
+          localStorage.setItem("nopin_user", JSON.stringify(userData));
+          setUser(userData);
+          setIsOnboarded(true);
+          setCurrentTab('home');
+          setCurrentPage('feed');
+        }}
+      />
+    );
+  }
 
   return (
     <div className="app-wrapper">

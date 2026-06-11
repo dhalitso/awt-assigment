@@ -28,7 +28,7 @@ const NopinLogoPurple = () => (
 );
 
 export default function Onboarding({ onComplete }) {
-  const [stage, setStage] = useState('splash'); // 'splash', 'onboarding', 'signin', 'signup'
+  const [stage, setStage] = useState('splash'); // 'splash', 'onboarding', 'signin', 'signup', 'otp'
   const [slideIndex, setSlideIndex] = useState(0);
 
   // Form states
@@ -44,6 +44,14 @@ export default function Onboarding({ onComplete }) {
   const [showSignUpConfirmPassword, setShowSignUpConfirmPassword] = useState(false);
   const [agreeTerms, setAgreeTerms] = useState(true);
 
+  // OTP Verification States
+  const [otpDigits, setOtpDigits] = useState(['', '', '', '']);
+  const [expectedOtpCode, setExpectedOtpCode] = useState('');
+  const [otpTimer, setOtpTimer] = useState(59);
+  const [pendingUser, setPendingUser] = useState(null);
+  const [otpError, setOtpError] = useState('');
+  const [showOtpToast, setShowOtpToast] = useState(false);
+
   // Splash auto-transition
   useEffect(() => {
     if (stage === 'splash') {
@@ -53,6 +61,74 @@ export default function Onboarding({ onComplete }) {
       return () => clearTimeout(timer);
     }
   }, [stage]);
+
+  // OTP Timer countdown
+  useEffect(() => {
+    let timerId;
+    if (stage === 'otp' && otpTimer > 0) {
+      timerId = setTimeout(() => {
+        setOtpTimer(prev => prev - 1);
+      }, 1000);
+    }
+    return () => clearTimeout(timerId);
+  }, [stage, otpTimer]);
+
+  const triggerOtp = (mockUser) => {
+    const code = Math.floor(1000 + Math.random() * 9000).toString();
+    setExpectedOtpCode(code);
+    setPendingUser(mockUser);
+    setOtpDigits(['', '', '', '']);
+    setOtpTimer(59);
+    setOtpError('');
+    setStage('otp');
+    setShowOtpToast(true);
+  };
+
+  const handleDigitChange = (index, value) => {
+    const cleanValue = value.replace(/[^0-9]/g, '');
+    if (!cleanValue && value !== '') return;
+    
+    const newDigits = [...otpDigits];
+    newDigits[index] = cleanValue.substring(cleanValue.length - 1);
+    setOtpDigits(newDigits);
+
+    // Auto-focus next input
+    if (cleanValue && index < 3) {
+      const nextInput = document.getElementById(`otp-input-${index + 1}`);
+      if (nextInput) nextInput.focus();
+    }
+  };
+
+  const handleKeyDown = (index, e) => {
+    if (e.key === 'Backspace' && !otpDigits[index] && index > 0) {
+      const prevInput = document.getElementById(`otp-input-${index - 1}`);
+      if (prevInput) {
+        prevInput.focus();
+      }
+    }
+  };
+
+  const handleOtpSubmit = (e) => {
+    e.preventDefault();
+    const enteredCode = otpDigits.join('');
+    if (enteredCode === expectedOtpCode) {
+      onComplete(pendingUser);
+    } else {
+      setOtpError('Código de verificação incorreto. Tente novamente.');
+      setOtpDigits(['', '', '', '']);
+      const firstInput = document.getElementById('otp-input-0');
+      if (firstInput) firstInput.focus();
+    }
+  };
+
+  const handleResendOtp = () => {
+    const code = Math.floor(1000 + Math.random() * 9000).toString();
+    setExpectedOtpCode(code);
+    setOtpTimer(59);
+    setOtpError('');
+    setOtpDigits(['', '', '', '']);
+    setShowOtpToast(true);
+  };
 
   const handleNextSlide = () => {
     if (slideIndex < 2) {
@@ -72,7 +148,7 @@ export default function Onboarding({ onComplete }) {
       alert('Por favor introduza o seu email');
       return;
     }
-    // Mock authentication with details
+    // Mock authentication details
     const mockUser = {
       name: signInEmail.split('@')[0],
       email: signInEmail,
@@ -86,7 +162,7 @@ export default function Onboarding({ onComplete }) {
         { id: "b1", title: "Registado", icon: "user-check", desc: "Criou conta na plataforma" }
       ]
     };
-    onComplete(mockUser);
+    triggerOtp(mockUser);
   };
 
   const handleSignUpSubmit = (e) => {
@@ -117,7 +193,7 @@ export default function Onboarding({ onComplete }) {
         { id: "b1", title: "Registado", icon: "user-check", desc: "Criou conta na plataforma" }
       ]
     };
-    onComplete(mockUser);
+    triggerOtp(mockUser);
   };
 
   const handleSocialLogin = (platform) => {
@@ -496,6 +572,159 @@ export default function Onboarding({ onComplete }) {
             </button>
           </form>
         </div>
+      </div>
+    );
+  }
+
+  // 5. OTP Verification Screen
+  if (stage === 'otp') {
+    return (
+      <div className="auth-container" style={{ animation: 'fadeIn 0.3s ease-out', position: 'relative' }}>
+        
+        {/* Simulated OTP Notification Toast */}
+        {showOtpToast && (
+          <div style={{
+            position: 'absolute',
+            top: '20px',
+            left: '20px',
+            right: '20px',
+            backgroundColor: '#ede9fe', // Light violet 100
+            border: '1.5px solid #c084fc', // Purple 400
+            borderRadius: '12px',
+            padding: '16px',
+            boxShadow: '0 4px 12px rgba(124, 58, 237, 0.15)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            zIndex: 1000,
+            animation: 'slideDown 0.3s ease-out'
+          }}>
+            <span style={{ fontSize: '1.25rem' }}>📧</span>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 800, fontSize: '0.75rem', color: 'var(--color-primary)' }}>SIMULAÇÃO DE SMS/E-MAIL (OTP)</div>
+              <div style={{ fontSize: '0.8rem', color: '#4b5563', marginTop: '2px' }}>
+                Código enviado para <strong>{pendingUser?.email}</strong>: <strong style={{ fontSize: '1.1rem', color: '#7c3aed' }}>{expectedOtpCode}</strong>
+              </div>
+            </div>
+            <button 
+              type="button"
+              onClick={() => setShowOtpToast(false)} 
+              className="btn-clean"
+              style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#6b7280' }}
+            >
+              <X size={18} />
+            </button>
+          </div>
+        )}
+
+        <style>{`
+          @keyframes slideDown {
+            0% { transform: translateY(-20px); opacity: 0; }
+            100% { transform: translateY(0); opacity: 1; }
+          }
+        `}</style>
+
+        {/* Toolbar */}
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: '32px' }}>
+          <button
+            onClick={() => setStage('signin')}
+            className="btn-clean"
+            style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', border: 'none', background: 'none' }}
+          >
+            <ArrowLeft size={20} />
+            <span style={{ fontWeight: 700, fontSize: '1.2rem' }}>Verificação</span>
+          </button>
+        </div>
+
+        {/* Info */}
+        <div style={{ marginBottom: '28px' }}>
+          <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#111827', margin: '0 0 8px 0' }}>Insira o código</h2>
+          <p className="text-muted" style={{ fontSize: '0.85rem', lineHeight: 1.4, margin: 0 }}>
+            Enviámos um código de verificação temporário de 4 dígitos para o e-mail: <br />
+            <strong style={{ color: '#111827' }}>{pendingUser?.email}</strong>
+          </p>
+        </div>
+
+        {/* OTP Input Form */}
+        <form onSubmit={handleOtpSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '16px', margin: '12px 0' }}>
+            {otpDigits.map((digit, idx) => (
+              <input
+                key={idx}
+                id={`otp-input-${idx}`}
+                type="text"
+                maxLength="1"
+                pattern="[0-9]*"
+                inputMode="numeric"
+                value={digit}
+                onChange={(e) => handleDigitChange(idx, e.target.value)}
+                onKeyDown={(e) => handleKeyDown(idx, e)}
+                style={{
+                  width: '56px',
+                  height: '56px',
+                  borderRadius: '12px',
+                  border: '2px solid',
+                  borderColor: digit ? 'var(--color-primary)' : '#d1d5db',
+                  textAlign: 'center',
+                  fontSize: '1.5rem',
+                  fontWeight: '700',
+                  color: '#111827',
+                  backgroundColor: digit ? '#f5f3ff' : 'transparent',
+                  outline: 'none',
+                  boxShadow: digit ? '0 0 0 3px rgba(124, 58, 237, 0.15)' : 'none',
+                  transition: 'all 0.15s ease'
+                }}
+                required
+              />
+            ))}
+          </div>
+
+          {otpError && (
+            <div style={{ color: '#ef4444', fontSize: '0.8rem', fontWeight: 600, textAlign: 'center', margin: '-8px 0' }}>
+              {otpError}
+            </div>
+          )}
+
+          {/* Resend Actions */}
+          <div style={{ textAlign: 'center', fontSize: '0.85rem', color: '#6b7280' }}>
+            {otpTimer > 0 ? (
+              <span>Reenviar código em <strong style={{ color: '#111827' }}>0:{otpTimer < 10 ? '0' : ''}{otpTimer}s</strong></span>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.8rem' }}>Não recebeu o e-mail?</span>
+                <button
+                  type="button"
+                  onClick={handleResendOtp}
+                  className="btn-clean"
+                  style={{ color: 'var(--color-primary)', fontWeight: 700, cursor: 'pointer', border: 'none', background: 'none', textDecoration: 'underline' }}
+                >
+                  Reenviar código OTP
+                </button>
+              </div>
+            )}
+          </div>
+
+          <button
+            type="submit"
+            className="btn btn-dark"
+            style={{ width: '100%', padding: '16px', borderRadius: 'var(--radius-full)', fontWeight: 600, fontSize: '0.95rem', marginTop: '12px' }}
+          >
+            Confirmar e Entrar
+          </button>
+        </form>
+
+        {/* Back Link */}
+        <button
+          type="button"
+          onClick={() => setStage('signin')}
+          className="btn-clean"
+          style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', border: 'none', background: 'none', margin: '24px auto 0 auto', fontSize: '0.85rem', color: '#6b7280' }}
+        >
+          <ArrowLeft size={16} />
+          <span>Voltar ao e-mail e password</span>
+        </button>
+
       </div>
     );
   }

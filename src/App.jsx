@@ -9,6 +9,7 @@ import Favorites from './pages/Favorites';
 import Notifications from './pages/Notifications';
 import Messages from './pages/Messages';
 import Onboarding from './pages/Onboarding';
+import useVisitorTracker from './hooks/useVisitorTracker';
 
 import {
   getStoredProperties,
@@ -25,6 +26,9 @@ import {
 } from './data/properties';
 
 export default function App() {
+  // Initialize Supabase Visitor Session Tracking
+  useVisitorTracker();
+
   // 1. Navigation & Flow State Machine
   const [isOnboarded, setIsOnboarded] = useState(
     localStorage.getItem("nopin_onboarded") === "true"

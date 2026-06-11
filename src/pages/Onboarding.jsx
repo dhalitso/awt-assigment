@@ -82,10 +82,17 @@ export default function Onboarding({ onComplete }) {
     setOtpError('');
     setStage('otp');
 
-    // If Supabase client is not configured, fall back to mock code
-    if (!supabase) {
-      const code = Math.floor(100000 + Math.random() * 900000).toString();
-      setExpectedOtpCode(code);
+    const serviceId = import.meta.env.VITE_EMAILJS_SERVICE_ID;
+    const templateId = import.meta.env.VITE_EMAILJS_TEMPLATE_ID;
+    const publicKey = import.meta.env.VITE_EMAILJS_PUBLIC_KEY;
+
+    // Generate 6 digit code
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    setExpectedOtpCode(code);
+
+    // If credentials are missing, fall back to mock toast simulation
+    if (!serviceId || !templateId || !publicKey) {
+      console.warn('EmailJS credentials missing. Falling back to simulated OTP.');
       setShowOtpToast(true);
       return;
     }
@@ -93,19 +100,30 @@ export default function Onboarding({ onComplete }) {
     setShowOtpToast(false); // Disable toast since real email will be sent
 
     try {
-      const { error } = await supabase.auth.signInWithOtp({
-        email: mockUser.email,
-        options: {
-          shouldCreateUser: true
-        }
+      const response = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          service_id: serviceId,
+          template_id: templateId,
+          user_id: publicKey,
+          template_params: {
+            otp_code: code,
+            to_email: mockUser.email
+          }
+        })
       });
-      if (error) {
-        console.error('Supabase OTP send error:', error.message);
-        setOtpError(`Erro ao enviar código por e-mail: ${error.message}`);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('EmailJS send error:', errorText);
+        setOtpError(`Erro ao enviar código por e-mail: ${errorText || response.statusText}`);
       }
     } catch (e) {
-      console.error('Supabase OTP connection error:', e);
-      setOtpError('Falha ao conectar com o serviço de autenticação.');
+      console.error('EmailJS connection error:', e);
+      setOtpError('Falha ao conectar com o serviço de e-mail.');
     }
   };
 
@@ -137,43 +155,20 @@ export default function Onboarding({ onComplete }) {
     e.preventDefault();
     const enteredCode = otpDigits.join('');
 
-    // Fallback if Supabase is offline/not configured
-    if (!supabase) {
-      if (enteredCode === expectedOtpCode) {
-        onComplete(pendingUser);
-      } else {
-        setOtpError('Código de verificação incorreto. Tente novamente.');
-        setOtpDigits(['', '', '', '', '', '']);
-        const firstInput = document.getElementById('otp-input-0');
-        if (firstInput) firstInput.focus();
-      }
-      return;
-    }
-
-    try {
-      const { data, error } = await supabase.auth.verifyOtp({
-        email: pendingUser.email,
-        token: enteredCode,
-        type: 'email'
-      });
-
-      if (error) {
-        setOtpError(`Código de verificação inválido: ${error.message}`);
-        setOtpDigits(['', '', '', '', '', '']);
-        const firstInput = document.getElementById('otp-input-0');
-        if (firstInput) firstInput.focus();
-      } else {
-        // Logged in successfully with real OTP!
-        const authenticatedUser = {
-          ...pendingUser,
-          verified: true,
-          id: data.user?.id || pendingUser.id
-        };
-        onComplete(authenticatedUser);
-      }
-    } catch (e) {
-      console.error('Supabase OTP verification execution error:', e);
-      setOtpError('Erro ao verificar o código. Tente novamente.');
+    // Compare with the generated OTP code
+    if (enteredCode === expectedOtpCode) {
+      // Create user session object
+      const authenticatedUser = {
+        ...pendingUser,
+        verified: true,
+        id: pendingUser.id || `user_${Date.now()}`
+      };
+      onComplete(authenticatedUser);
+    } else {
+      setOtpError('Código de verificação incorreto. Tente novamente.');
+      setOtpDigits(['', '', '', '', '', '']);
+      const firstInput = document.getElementById('otp-input-0');
+      if (firstInput) firstInput.focus();
     }
   };
 
@@ -182,25 +177,46 @@ export default function Onboarding({ onComplete }) {
     setOtpError('');
     setOtpDigits(['', '', '', '', '', '']);
 
-    if (!supabase) {
-      const code = Math.floor(100000 + Math.random() * 900000).toString();
-      setExpectedOtpCode(code);
+    const serviceId = import.meta.env.VITE_EMAILJS_SERVICE_ID;
+    const templateId = import.meta.env.VITE_EMAILJS_TEMPLATE_ID;
+    const publicKey = import.meta.env.VITE_EMAILJS_PUBLIC_KEY;
+
+    // Generate 6 digit code
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    setExpectedOtpCode(code);
+
+    if (!serviceId || !templateId || !publicKey) {
+      console.warn('EmailJS credentials missing. Falling back to simulated OTP.');
       setShowOtpToast(true);
       return;
     }
 
+    setShowOtpToast(false);
+
     try {
-      const { error } = await supabase.auth.signInWithOtp({
-        email: pendingUser.email,
-        options: {
-          shouldCreateUser: true
-        }
+      const response = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          service_id: serviceId,
+          template_id: templateId,
+          user_id: publicKey,
+          template_params: {
+            otp_code: code,
+            to_email: pendingUser.email
+          }
+        })
       });
-      if (error) {
-        setOtpError(`Erro ao reenviar e-mail: ${error.message}`);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('EmailJS send error:', errorText);
+        setOtpError(`Erro ao reenviar e-mail: ${errorText || response.statusText}`);
       }
     } catch (e) {
-      console.error('Supabase OTP resend connection error:', e);
+      console.error('EmailJS connection error:', e);
       setOtpError('Erro ao conectar com o serviço de e-mail.');
     }
   };

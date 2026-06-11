@@ -10,6 +10,11 @@ export default function useVisitorTracker() {
     let intervalId = null;
 
     const runTracker = async () => {
+      if (!supabase) {
+        console.warn('Supabase client is not configured. Skipping visitor tracking.');
+        return;
+      }
+      
       // 1. Gather device info
       const ua = navigator.userAgent;
       const isMobile = /Mobi|Android|iPhone|iPad/i.test(ua);
@@ -95,7 +100,7 @@ export default function useVisitorTracker() {
       active = false;
       if (intervalId) clearInterval(intervalId);
       
-      if (sessionIdRef.current) {
+      if (supabase && sessionIdRef.current) {
         const finalElapsed = Math.round((Date.now() - startTimeRef.current) / 1000);
         
         // Final update using standard promise in fire-and-forget style

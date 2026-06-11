@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ArrowRight, Eye, EyeOff, X, ArrowLeft } from 'lucide-react';
+import { supabase } from '../lib/supabaseClient';
 
 const NopinLogo = () => (
   <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 800, fontSize: '2.8rem', color: '#ffffff', letterSpacing: '-1px', fontFamily: 'var(--font-title)' }}>
@@ -44,8 +45,8 @@ export default function Onboarding({ onComplete }) {
   const [showSignUpConfirmPassword, setShowSignUpConfirmPassword] = useState(false);
   const [agreeTerms, setAgreeTerms] = useState(true);
 
-  // OTP Verification States
-  const [otpDigits, setOtpDigits] = useState(['', '', '', '']);
+  // OTP Verification States (Supabase Auth uses a 6-digit OTP code)
+  const [otpDigits, setOtpDigits] = useState(['', '', '', '', '', '']);
   const [expectedOtpCode, setExpectedOtpCode] = useState('');
   const [otpTimer, setOtpTimer] = useState(59);
   const [pendingUser, setPendingUser] = useState(null);
@@ -73,15 +74,39 @@ export default function Onboarding({ onComplete }) {
     return () => clearTimeout(timerId);
   }, [stage, otpTimer]);
 
-  const triggerOtp = (mockUser) => {
-    const code = Math.floor(1000 + Math.random() * 9000).toString();
-    setExpectedOtpCode(code);
+  const triggerOtp = async (mockUser) => {
+    // Save info
     setPendingUser(mockUser);
-    setOtpDigits(['', '', '', '']);
+    setOtpDigits(['', '', '', '', '', '']);
     setOtpTimer(59);
     setOtpError('');
     setStage('otp');
-    setShowOtpToast(true);
+
+    // If Supabase client is not configured, fall back to mock code
+    if (!supabase) {
+      const code = Math.floor(100000 + Math.random() * 900000).toString();
+      setExpectedOtpCode(code);
+      setShowOtpToast(true);
+      return;
+    }
+
+    setShowOtpToast(false); // Disable toast since real email will be sent
+
+    try {
+      const { error } = await supabase.auth.signInWithOtp({
+        email: mockUser.email,
+        options: {
+          shouldCreateUser: true
+        }
+      });
+      if (error) {
+        console.error('Supabase OTP send error:', error.message);
+        setOtpError(`Erro ao enviar código por e-mail: ${error.message}`);
+      }
+    } catch (e) {
+      console.error('Supabase OTP connection error:', e);
+      setOtpError('Falha ao conectar com o serviço de autenticação.');
+    }
   };
 
   const handleDigitChange = (index, value) => {
@@ -92,8 +117,8 @@ export default function Onboarding({ onComplete }) {
     newDigits[index] = cleanValue.substring(cleanValue.length - 1);
     setOtpDigits(newDigits);
 
-    // Auto-focus next input
-    if (cleanValue && index < 3) {
+    // Auto-focus next input (6 digits total, so next is index + 1 up to index 5)
+    if (cleanValue && index < 5) {
       const nextInput = document.getElementById(`otp-input-${index + 1}`);
       if (nextInput) nextInput.focus();
     }
@@ -108,26 +133,76 @@ export default function Onboarding({ onComplete }) {
     }
   };
 
-  const handleOtpSubmit = (e) => {
+  const handleOtpSubmit = async (e) => {
     e.preventDefault();
     const enteredCode = otpDigits.join('');
-    if (enteredCode === expectedOtpCode) {
-      onComplete(pendingUser);
-    } else {
-      setOtpError('Código de verificação incorreto. Tente novamente.');
-      setOtpDigits(['', '', '', '']);
-      const firstInput = document.getElementById('otp-input-0');
-      if (firstInput) firstInput.focus();
+
+    // Fallback if Supabase is offline/not configured
+    if (!supabase) {
+      if (enteredCode === expectedOtpCode) {
+        onComplete(pendingUser);
+      } else {
+        setOtpError('Código de verificação incorreto. Tente novamente.');
+        setOtpDigits(['', '', '', '', '', '']);
+        const firstInput = document.getElementById('otp-input-0');
+        if (firstInput) firstInput.focus();
+      }
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase.auth.verifyOtp({
+        email: pendingUser.email,
+        token: enteredCode,
+        type: 'email'
+      });
+
+      if (error) {
+        setOtpError(`Código de verificação inválido: ${error.message}`);
+        setOtpDigits(['', '', '', '', '', '']);
+        const firstInput = document.getElementById('otp-input-0');
+        if (firstInput) firstInput.focus();
+      } else {
+        // Logged in successfully with real OTP!
+        const authenticatedUser = {
+          ...pendingUser,
+          verified: true,
+          id: data.user?.id || pendingUser.id
+        };
+        onComplete(authenticatedUser);
+      }
+    } catch (e) {
+      console.error('Supabase OTP verification execution error:', e);
+      setOtpError('Erro ao verificar o código. Tente novamente.');
     }
   };
 
-  const handleResendOtp = () => {
-    const code = Math.floor(1000 + Math.random() * 9000).toString();
-    setExpectedOtpCode(code);
+  const handleResendOtp = async () => {
     setOtpTimer(59);
     setOtpError('');
-    setOtpDigits(['', '', '', '']);
-    setShowOtpToast(true);
+    setOtpDigits(['', '', '', '', '', '']);
+
+    if (!supabase) {
+      const code = Math.floor(100000 + Math.random() * 900000).toString();
+      setExpectedOtpCode(code);
+      setShowOtpToast(true);
+      return;
+    }
+
+    try {
+      const { error } = await supabase.auth.signInWithOtp({
+        email: pendingUser.email,
+        options: {
+          shouldCreateUser: true
+        }
+      });
+      if (error) {
+        setOtpError(`Erro ao reenviar e-mail: ${error.message}`);
+      }
+    } catch (e) {
+      console.error('Supabase OTP resend connection error:', e);
+      setOtpError('Erro ao conectar com o serviço de e-mail.');
+    }
   };
 
   const handleNextSlide = () => {
@@ -640,7 +715,7 @@ export default function Onboarding({ onComplete }) {
         <div style={{ marginBottom: '28px' }}>
           <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#111827', margin: '0 0 8px 0' }}>Insira o código</h2>
           <p className="text-muted" style={{ fontSize: '0.85rem', lineHeight: 1.4, margin: 0 }}>
-            Enviámos um código de verificação temporário de 4 dígitos para o e-mail: <br />
+            Enviámos um código de verificação temporário de 6 dígitos para o e-mail: <br />
             <strong style={{ color: '#111827' }}>{pendingUser?.email}</strong>
           </p>
         </div>
@@ -648,7 +723,7 @@ export default function Onboarding({ onComplete }) {
         {/* OTP Input Form */}
         <form onSubmit={handleOtpSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
           
-          <div style={{ display: 'flex', justifyContent: 'center', gap: '16px', margin: '12px 0' }}>
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', margin: '12px 0' }}>
             {otpDigits.map((digit, idx) => (
               <input
                 key={idx}

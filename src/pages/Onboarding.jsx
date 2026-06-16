@@ -110,7 +110,7 @@ export default function Onboarding({ onComplete }) {
           template_id: templateId,
           user_id: publicKey,
           template_params: {
-            otp_code: code,
+            otp_code: `Olá! O seu código de verificação temporário para o Nopin é: ${code}`,
             to_email: mockUser.email
           }
         })
@@ -204,7 +204,7 @@ export default function Onboarding({ onComplete }) {
           template_id: templateId,
           user_id: publicKey,
           template_params: {
-            otp_code: code,
+            otp_code: `Olá! O seu código de verificação temporário para o Nopin é: ${code}`,
             to_email: pendingUser.email
           }
         })

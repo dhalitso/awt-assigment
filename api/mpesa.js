@@ -39,6 +39,8 @@ export default async function handler(req, res) {
   const apiKey = process.env.MPESA_API_KEY;
   let publicKeyPEM = process.env.MPESA_PUBLIC_KEY; // Public key formatted in PEM (with header/footer)
   const serviceProviderCode = process.env.MPESA_SERVICE_PROVIDER_CODE || '171717'; // default test code
+  const apiHost = process.env.MPESA_API_HOST || 'api.sandbox.vm.co.mz';
+  const apiOrigin = process.env.MPESA_ORIGIN || 'developer.mpesa.vm.co.mz';
 
   // Normalize PEM public key format (replace literal \n or \\n and wrap in headers if missing)
   if (publicKeyPEM && typeof publicKeyPEM === 'string') {
@@ -75,10 +77,10 @@ export default async function handler(req, res) {
     const encryptedApiKey = encrypted.toString('base64');
 
     // 2. Fetch Session ID from M-Pesa API
-    const authResponse = await fetch('https://api.sandbox.vm.co.mz/ipg/v1x/auth/start/session/', {
+    const authResponse = await fetch(`https://${apiHost}/ipg/v1x/auth/start/session/`, {
       method: 'GET',
       headers: {
-        'Origin': 'developer.mpesa.vm.co.mz',
+        'Origin': apiOrigin,
         'Authorization': `Bearer ${encryptedApiKey}`
       }
     });
@@ -98,11 +100,11 @@ export default async function handler(req, res) {
     const transactionReference = 'REF_' + Date.now();
     const thirdPartyReference = '3RD_' + Math.floor(100000 + Math.random() * 900000);
 
-    const paymentResponse = await fetch('https://api.sandbox.vm.co.mz/ipg/v1x/c2bPayment/singleStage/', {
+    const paymentResponse = await fetch(`https://${apiHost}/ipg/v1x/c2bPayment/singleStage/`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Origin': 'developer.mpesa.vm.co.mz',
+        'Origin': apiOrigin,
         'Authorization': `Bearer ${sessionId}`
       },
       body: JSON.stringify({

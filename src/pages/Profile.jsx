@@ -13,12 +13,11 @@ export default function Profile({
   const [activeModal, setActiveModal] = useState(null); // 'recharge', 'verify_id', 'settings', 'reviews', 'security', 'support'
   
   // 1. Recharge Flow State
-  const [rechargeStep, setRechargeStep] = useState(1); // 1: Cart, 2: Phone/Method details, 3: USSD prompt, 4: Processing, 5: Success
+  const [rechargeStep, setRechargeStep] = useState(1); // 1: Cart, 2: Phone/Method details, 3: Processing (Push sent), 4: Success
   const [selectedPack, setSelectedPack] = useState(null); // Selected predefined pack (or null for custom)
   const [customCredits, setCustomCredits] = useState(10); // Number of custom credits if no pack is selected
   const [rechargePhone, setRechargePhone] = useState('+258 ');
   const [selectedMethod, setSelectedMethod] = useState('mpesa'); // mpesa, emola
-  const [mpesaPin, setMpesaPin] = useState('');
   const [rechargeError, setRechargeError] = useState('');
 
   // 2. ID Verification Flow State (9 Steps)
@@ -47,21 +46,6 @@ export default function Profile({
     setRechargeStep(2);
   };
 
-  const handleRechargeSubmit = () => {
-    // Validate phone number
-    const cleanNo = rechargePhone.replace(/\s+/g, '');
-    
-    // Accept standard Mozambican numbers (e.g. +258 84/85/87/86/82/83/89...)
-    if (!/^\+2588[2-79]\d{7}$/.test(cleanNo)) {
-      alert('Número inválido. Use o formato: +258 84 123 4567');
-      return;
-    }
-
-    setMpesaPin('');
-    setRechargeError('');
-    setRechargeStep(3); // Go to USSD PIN entry prompt
-  };
-
   const sendReceiptEmail = async (creditsPurchased, amountPaid) => {
     const serviceId = import.meta.env.VITE_EMAILJS_SERVICE_ID;
     const templateId = import.meta.env.VITE_EMAILJS_TEMPLATE_ID;
@@ -88,7 +72,7 @@ export default function Profile({
           user_id: publicKey,
           template_params: {
             otp_code: message, // Pass the receipt message in otp_code to fit your current template
-            to_email: user.email
+            to_email: user.email // Uses the exact email of the logged-in account
           }
         })
       });
@@ -100,29 +84,57 @@ export default function Profile({
     }
   };
 
-  const handlePinSubmit = (e) => {
-    e.preventDefault();
-    if (mpesaPin.length < 4) {
-      setRechargeError('O PIN deve ter pelo menos 4 dígitos.');
+  const handleRechargeSubmit = async () => {
+    // Validate phone number
+    const cleanNo = rechargePhone.replace(/\s+/g, '');
+    
+    // Accept standard Mozambican numbers (e.g. +258 84/85/87/86/82/83/89...)
+    if (!/^\+2588[2-79]\d{7}$/.test(cleanNo)) {
+      alert('Número inválido. Use o formato: +258 84 123 4567');
       return;
     }
 
-    setRechargeStep(4); // Show spinner
+    setRechargeStep(3); // Go to processing (Waiting for M-Pesa push confirmation on phone)
+    setRechargeError('');
 
     const creditsPurchased = selectedPack ? selectedPack.credits : customCredits;
     const amountPaid = selectedPack ? selectedPack.price : customCredits * 10;
 
-    // Simulate transaction delay
-    setTimeout(async () => {
-      onUpdateUser({
-        credits: user.credits + creditsPurchased
+    try {
+      // Call the serverless M-Pesa API endpoint (triggers STK Push)
+      const response = await fetch('/api/mpesa', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          phone: cleanNo,
+          amount: amountPaid
+        })
       });
-      
-      // Send receipt email via EmailJS (asynchronously in background)
-      sendReceiptEmail(creditsPurchased, amountPaid);
-      
-      setRechargeStep(5); // Show success tick
-    }, 3000);
+
+      if (response.ok) {
+        const result = await response.json();
+        
+        // Update user balance
+        onUpdateUser({
+          credits: user.credits + creditsPurchased
+        });
+
+        // Send receipt email to the logged in account email address
+        sendReceiptEmail(creditsPurchased, amountPaid);
+        
+        setRechargeStep(4); // Show success screen
+      } else {
+        const errData = await response.json().catch(() => ({}));
+        alert(errData.error || 'A transação M-Pesa falhou ou foi cancelada pelo utilizador.');
+        setRechargeStep(2); // Go back to checkout details
+      }
+    } catch (e) {
+      console.error('M-Pesa payment request failed:', e);
+      alert('Falha ao conectar com o serviço M-Pesa. Tente novamente.');
+      setRechargeStep(2); // Go back to checkout details
+    }
   };
 
   // Helper function to simulate camera flash shutter effect
@@ -843,131 +855,8 @@ export default function Profile({
           </div>
         )}
 
-        {/* Step 3: M-Pesa / e-Mola Simulated USSD Prompt Overlay */}
+        {/* Step 3: Transaction processing spinner (Real STK push wait) */}
         {rechargeStep === 3 && (
-          <div style={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '16px 8px'
-          }}>
-            {/* Simulated Phone Screen Block */}
-            <div style={{
-              width: '100%',
-              maxWidth: '300px',
-              backgroundColor: '#2e3033', // Dark smartphone theme
-              borderRadius: '16px',
-              padding: '16px',
-              boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.3)',
-              border: '4px solid #1f2022',
-              color: '#ffffff',
-              fontFamily: 'monospace, Courier New',
-              animation: 'slideDown 0.3s ease-out'
-            }}>
-              <div style={{
-                textAlign: 'center',
-                fontWeight: 'bold',
-                fontSize: '0.85rem',
-                borderBottom: '1px solid #4a4d52',
-                paddingBottom: '8px',
-                marginBottom: '12px',
-                color: selectedMethod === 'mpesa' ? '#ff3b30' : '#ff9500',
-                letterSpacing: '1px'
-              }}>
-                {selectedMethod === 'mpesa' ? 'M-PESA VODACOM' : 'E-MOLA MOVITEL'}
-              </div>
-
-              <div style={{ fontSize: '0.8rem', lineHeight: '1.4', marginBottom: '16px' }}>
-                Deseja pagar {selectedPack ? selectedPack.price : customCredits * 10},00 MT à NOPIN LIMITADA?
-                <br /><br />
-                Introduza o seu PIN para confirmar:
-              </div>
-
-              <form onSubmit={handlePinSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <input
-                  type="password"
-                  pattern="[0-9]*"
-                  inputMode="numeric"
-                  maxLength="5"
-                  placeholder="PIN"
-                  value={mpesaPin}
-                  onChange={(e) => setMpesaPin(e.target.value.replace(/[^0-9]/g, ''))}
-                  style={{
-                    width: '100%',
-                    height: '44px',
-                    borderRadius: '6px',
-                    border: '1px solid #4a4d52',
-                    backgroundColor: '#1c1d1f',
-                    color: '#ffffff',
-                    fontSize: '1.4rem',
-                    textAlign: 'center',
-                    letterSpacing: '8px',
-                    outline: 'none',
-                    fontWeight: 'bold'
-                  }}
-                  required
-                  autoFocus
-                />
-
-                {rechargeError && (
-                  <div style={{ color: '#ff3b30', fontSize: '0.7rem', textAlign: 'center', margin: '4px 0' }}>
-                    {rechargeError}
-                  </div>
-                )}
-
-                <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setRechargeStep(2);
-                      setRechargeError('');
-                    }}
-                    style={{
-                      flex: 1,
-                      height: '36px',
-                      backgroundColor: '#4a4d52',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '4px',
-                      fontSize: '0.75rem',
-                      fontWeight: 'bold',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    CANCELAR
-                  </button>
-                  <button
-                    type="submit"
-                    style={{
-                      flex: 1,
-                      height: '36px',
-                      backgroundColor: selectedMethod === 'mpesa' ? '#e11d48' : '#ea580c',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '4px',
-                      fontSize: '0.75rem',
-                      fontWeight: 'bold',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    CONFIRMAR
-                  </button>
-                </div>
-              </form>
-            </div>
-            
-            <style>{`
-              @keyframes slideDown {
-                0% { transform: translateY(-10px); opacity: 0; }
-                100% { transform: translateY(0); opacity: 1; }
-              }
-            `}</style>
-          </div>
-        )}
-
-        {/* Step 4: Transaction processing spinner */}
-        {rechargeStep === 4 && (
           <div style={{ textAlign: 'center', padding: '32px 0' }}>
             <div className="loading-spinner" style={{
               width: '44px',
@@ -978,15 +867,17 @@ export default function Profile({
               margin: '0 auto 18px auto',
               animation: 'spin 0.8s linear infinite'
             }}></div>
-            <h4 style={{ fontWeight: 700, margin: 0 }}>A verificar pagamento...</h4>
-            <p className="text-muted" style={{ fontSize: '0.8rem', marginTop: '8px', margin: '8px 0 0 0' }}>
-              Processando a sua transação com a Vodacom. Aguarde um momento.
+            <h4 style={{ fontWeight: 700, margin: 0 }}>Aguardando PIN no telemóvel...</h4>
+            <p className="text-muted" style={{ fontSize: '0.8rem', marginTop: '8px', margin: '8px 0 0 0', lineHeight: 1.4 }}>
+              Enviámos um pedido de transacção para <strong>{rechargePhone}</strong>.
+              <br /><br />
+              Por favor, introduza o seu PIN M-Pesa no seu telemóvel para autorizar o pagamento de <strong>{selectedPack ? selectedPack.price : customCredits * 10},00 MT</strong>.
             </p>
           </div>
         )}
 
-        {/* Step 5: Success message */}
-        {rechargeStep === 5 && (
+        {/* Step 4: Success message */}
+        {rechargeStep === 4 && (
           <div style={{ textAlign: 'center', padding: '16px 0' }}>
             <div style={{
               width: '56px',

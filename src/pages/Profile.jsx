@@ -13,11 +13,14 @@ export default function Profile({
   const [activeModal, setActiveModal] = useState(null); // 'recharge', 'verify_id', 'settings', 'reviews', 'security', 'support'
   
   // 1. Recharge Flow State
-  const [rechargeStep, setRechargeStep] = useState(1); // 1: Select Pack, 2: Phone input, 3: Processing, 4: Success
-  const [selectedPack, setSelectedPack] = useState(null);
+  const [rechargeStep, setRechargeStep] = useState(1); // 1: Cart, 2: Phone/Method details, 3: USSD prompt, 4: Processing, 5: Success
+  const [selectedPack, setSelectedPack] = useState(null); // Selected predefined pack (or null for custom)
+  const [customCredits, setCustomCredits] = useState(10); // Number of custom credits if no pack is selected
   const [rechargePhone, setRechargePhone] = useState('+258 ');
   const [selectedMethod, setSelectedMethod] = useState('mpesa'); // mpesa, emola
-  
+  const [mpesaPin, setMpesaPin] = useState('');
+  const [rechargeError, setRechargeError] = useState('');
+
   // 2. ID Verification Flow State (9 Steps)
   // 1: Entry, 2: Select Doc, 3: Scan Front, 4: Review Front, 5: Selfie Intro, 6: Scan Selfie, 7: Review Selfie, 8: Submitting, 9: Success
   const [verifyStep, setVerifyStep] = useState(1);
@@ -40,22 +43,85 @@ export default function Profile({
     setRechargeStep(2);
   };
 
+  const handleCheckoutStart = () => {
+    setRechargeStep(2);
+  };
+
   const handleRechargeSubmit = () => {
     // Validate phone number
     const cleanNo = rechargePhone.replace(/\s+/g, '');
-    if (!/^\+2588[2-7]\d{7}$/.test(cleanNo)) {
+    
+    // Accept standard Mozambican numbers (e.g. +258 84/85/87/86/82/83/89...)
+    if (!/^\+2588[2-79]\d{7}$/.test(cleanNo)) {
       alert('Número inválido. Use o formato: +258 84 123 4567');
       return;
     }
 
-    setRechargeStep(3); // Show spinner
-    
-    // Simulate transaction delay
-    setTimeout(() => {
-      onUpdateUser({
-        credits: user.credits + selectedPack.credits
+    setMpesaPin('');
+    setRechargeError('');
+    setRechargeStep(3); // Go to USSD PIN entry prompt
+  };
+
+  const sendReceiptEmail = async (creditsPurchased, amountPaid) => {
+    const serviceId = import.meta.env.VITE_EMAILJS_SERVICE_ID;
+    const templateId = import.meta.env.VITE_EMAILJS_TEMPLATE_ID;
+    const publicKey = import.meta.env.VITE_EMAILJS_PUBLIC_KEY;
+
+    if (!serviceId || !templateId || !publicKey) {
+      console.warn("Credentials missing. Skipping real email receipt.");
+      return;
+    }
+
+    const transactionId = "TXN_" + Math.random().toString(36).substring(2, 11).toUpperCase();
+    const formattedDate = new Date().toLocaleString('pt-MZ', { timeZone: 'Africa/Maputo' });
+    const message = `COMPRA DE CRÉDITOS CONFIRMADA\n--------------------------------------\nCliente: ${user.name}\nE-mail: ${user.email}\nTelefone: ${rechargePhone}\nData: ${formattedDate}\nID Transação: ${transactionId}\nQuantidade: ${creditsPurchased} Nopins\nValor Pago: ${amountPaid},00 MT\n--------------------------------------\nObrigado por usar o Nopin!`;
+
+    try {
+      const response = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          service_id: serviceId,
+          template_id: templateId,
+          user_id: publicKey,
+          template_params: {
+            otp_code: message, // Pass the receipt message in otp_code to fit your current template
+            to_email: user.email
+          }
+        })
       });
-      setRechargeStep(4); // Show success tick
+      if (!response.ok) {
+        console.error("EmailJS sending error response:", await response.text());
+      }
+    } catch (e) {
+      console.error("Failed to send receipt email:", e);
+    }
+  };
+
+  const handlePinSubmit = (e) => {
+    e.preventDefault();
+    if (mpesaPin.length < 4) {
+      setRechargeError('O PIN deve ter pelo menos 4 dígitos.');
+      return;
+    }
+
+    setRechargeStep(4); // Show spinner
+
+    const creditsPurchased = selectedPack ? selectedPack.credits : customCredits;
+    const amountPaid = selectedPack ? selectedPack.price : customCredits * 10;
+
+    // Simulate transaction delay
+    setTimeout(async () => {
+      onUpdateUser({
+        credits: user.credits + creditsPurchased
+      });
+      
+      // Send receipt email via EmailJS (asynchronously in background)
+      sendReceiptEmail(creditsPurchased, amountPaid);
+      
+      setRechargeStep(5); // Show success tick
     }, 3000);
   };
 
@@ -520,7 +586,7 @@ export default function Profile({
       {/* ========================================================================= */}
       <Modal isOpen={activeModal === 'recharge'} onClose={() => setActiveModal(null)} title="Recarregar Créditos">
         
-        {/* Step 1: Select Package */}
+        {/* Step 1: Cart & Package Selection */}
         {rechargeStep === 1 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px', borderRadius: '8px', backgroundColor: selectedMethod === 'mpesa' ? '#fff1f2' : '#fff7ed', border: '1px solid', borderColor: selectedMethod === 'mpesa' ? '#fecdd3' : '#ffedd5' }}>
@@ -529,74 +595,379 @@ export default function Profile({
                 Carteira Activa: {selectedMethod === 'mpesa' ? 'M-Pesa (Vodacom)' : 'e-Mola (Movitel)'}
               </span>
             </div>
-            
-            <p className="text-muted" style={{ fontSize: '0.85rem', margin: 0 }}>Escolha um pacote de créditos Nopin para aumentar a visibilidade dos seus imóveis.</p>
-            {packs.map(pack => (
-              <div
-                key={pack.id}
-                onClick={() => handleRechargeSelect(pack)}
-                style={{
-                  border: '1px solid var(--color-border-dark)',
-                  borderRadius: 'var(--radius-lg)',
-                  padding: '16px',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  cursor: 'pointer',
-                  backgroundColor: 'white',
-                  transition: 'all 0.2s ease'
-                }}
-                className="recharge-pack-item"
-              >
-                <div>
-                  <h4 style={{ fontWeight: 700, fontSize: '0.9rem', margin: 0 }}>{pack.name}</h4>
-                  <p className="text-muted" style={{ fontSize: '0.75rem', marginTop: '4px', margin: '4px 0 0 0' }}>{pack.desc}</p>
+
+            {/* Packages Selector */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--color-text)' }}>1. Escolha um Pacote de Créditos:</span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {packs.map(pack => {
+                  const isSelected = selectedPack && selectedPack.id === pack.id;
+                  return (
+                    <div
+                      key={pack.id}
+                      onClick={() => {
+                        setSelectedPack(pack);
+                        setCustomCredits(pack.credits);
+                      }}
+                      style={{
+                        border: isSelected ? '2px solid var(--color-primary)' : '1px solid var(--color-border)',
+                        borderRadius: 'var(--radius-md)',
+                        padding: '12px 16px',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        cursor: 'pointer',
+                        backgroundColor: isSelected ? '#f5f3ff' : 'white',
+                        transition: 'all 0.15s ease',
+                        boxShadow: isSelected ? '0 4px 6px -1px rgba(124, 58, 237, 0.1)' : 'none'
+                      }}
+                    >
+                      <div>
+                        <h4 style={{ fontWeight: 700, fontSize: '0.85rem', margin: 0, color: isSelected ? 'var(--color-primary)' : 'var(--color-text)' }}>{pack.name}</h4>
+                        <p className="text-muted" style={{ fontSize: '0.7rem', margin: '2px 0 0 0' }}>{pack.desc}</p>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontWeight: 800, fontSize: '1rem', color: isSelected ? 'var(--color-primary)' : 'var(--color-text)' }}>{pack.price} MT</div>
+                        <span className="badge-verified" style={{ padding: '1px 6px', fontSize: '0.6rem', display: 'inline-block', marginTop: '2px' }}>{pack.credits} nopins</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Divider */}
+            <div style={{ display: 'flex', alignItems: 'center', margin: '8px 0', color: '#9ca3af' }}>
+              <div style={{ flex: 1, height: '1px', backgroundColor: '#e5e7eb' }}></div>
+              <span style={{ padding: '0 12px', fontSize: '0.75rem', fontWeight: 600 }}>OU</span>
+              <div style={{ flex: 1, height: '1px', backgroundColor: '#e5e7eb' }}></div>
+            </div>
+
+            {/* Custom Quantity Selector */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.8rem', fontWeight: 700 }}>Quantidade Customizada:</span>
+                {selectedPack && (
+                  <button
+                    onClick={() => {
+                      setSelectedPack(null);
+                      setCustomCredits(10);
+                    }}
+                    style={{ fontSize: '0.75rem', color: 'var(--color-primary)', border: 'none', background: 'none', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}
+                  >
+                    Usar Customizado
+                  </button>
+                )}
+              </div>
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '12px',
+                border: !selectedPack ? '2px solid var(--color-primary)' : '1px solid var(--color-border)',
+                borderRadius: 'var(--radius-md)',
+                padding: '12px',
+                backgroundColor: !selectedPack ? '#f5f3ff' : '#f9fafb'
+              }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedPack(null);
+                    setCustomCredits(prev => Math.max(1, prev - 1));
+                  }}
+                  style={{
+                    width: '36px',
+                    height: '36px',
+                    borderRadius: '50%',
+                    border: '1px solid #d1d5db',
+                    backgroundColor: 'white',
+                    fontSize: '1.2rem',
+                    fontWeight: 'bold',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}
+                >
+                  -
+                </button>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                  <input
+                    type="number"
+                    min="1"
+                    value={customCredits}
+                    onChange={(e) => {
+                      setSelectedPack(null);
+                      const val = parseInt(e.target.value);
+                      setCustomCredits(isNaN(val) ? 1 : val);
+                    }}
+                    style={{
+                      width: '80px',
+                      border: 'none',
+                      background: 'transparent',
+                      textAlign: 'center',
+                      fontSize: '1.4rem',
+                      fontWeight: 800,
+                      color: 'var(--color-text)',
+                      outline: 'none'
+                    }}
+                  />
+                  <span style={{ fontSize: '0.65rem', color: '#6b7280', fontWeight: 600 }}>nopins</span>
                 </div>
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontWeight: 800, fontSize: '1.1rem', color: 'var(--color-primary)' }}>{pack.price} MT</div>
-                  <span className="badge-verified" style={{ padding: '2px 8px', fontSize: '0.65rem', display: 'inline-block', marginTop: '4px' }}>{pack.credits} nopins</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedPack(null);
+                    setCustomCredits(prev => prev + 1);
+                  }}
+                  style={{
+                    width: '36px',
+                    height: '36px',
+                    borderRadius: '50%',
+                    border: '1px solid #d1d5db',
+                    backgroundColor: 'white',
+                    fontSize: '1.2rem',
+                    fontWeight: 'bold',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}
+                >
+                  +
+                </button>
+              </div>
+            </div>
+
+            {/* Shopping Cart Summary */}
+            <div style={{
+              marginTop: '12px',
+              padding: '16px',
+              backgroundColor: '#f9fafb',
+              borderRadius: 'var(--radius-md)',
+              border: '1px solid #e5e7eb'
+            }}>
+              <h4 style={{ fontWeight: 700, fontSize: '0.8rem', margin: '0 0 12px 0', borderBottom: '1px solid #e5e7eb', paddingBottom: '6px' }}>
+                🛒 Resumo do Carrinho
+              </h4>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.75rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span className="text-muted">Item:</span>
+                  <span style={{ fontWeight: 600 }}>{selectedPack ? `Pacote: ${selectedPack.name}` : 'Créditos Personalizados'}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span className="text-muted">Quantidade:</span>
+                  <span style={{ fontWeight: 600 }}>{selectedPack ? selectedPack.credits : customCredits} nopins</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span className="text-muted">Preço Unitário:</span>
+                  <span style={{ fontWeight: 600 }}>10,00 MT / nopin</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px dashed #e5e7eb', paddingTop: '8px', marginTop: '4px', fontSize: '0.85rem' }}>
+                  <span style={{ fontWeight: 700 }}>Total a pagar:</span>
+                  <span style={{ fontWeight: 800, color: 'var(--color-primary)' }}>
+                    {selectedPack ? selectedPack.price : customCredits * 10},00 MT
+                  </span>
                 </div>
               </div>
-            ))}
+            </div>
+
+            {/* Proceed Button */}
+            <button
+              onClick={handleCheckoutStart}
+              className="btn btn-primary"
+              style={{
+                width: '100%',
+                height: '48px',
+                fontWeight: 600,
+                marginTop: '8px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px'
+              }}
+            >
+              <span>Ir para o Checkout</span>
+              <ArrowRight size={16} />
+            </button>
           </div>
         )}
 
-        {/* Step 2: Payment Details */}
+        {/* Step 2: Checkout / Payment Details */}
         {rechargeStep === 2 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div>
-              <span className="text-muted" style={{ fontSize: '0.75rem' }}>Pacote selecionado:</span>
-              <h4 style={{ fontWeight: 800, color: 'var(--color-primary)', marginTop: '2px', margin: '2px 0 0 0' }}>
-                {selectedPack.name} ({selectedPack.credits} nopins) — {selectedPack.price} MZN
+            <div style={{
+              padding: '12px 16px',
+              backgroundColor: '#f9fafb',
+              borderRadius: 'var(--radius-md)',
+              borderLeft: '4px solid var(--color-primary)'
+            }}>
+              <span className="text-muted" style={{ fontSize: '0.7rem' }}>Total do pedido:</span>
+              <h4 style={{ fontWeight: 800, color: 'var(--color-primary)', margin: '2px 0 0 0', fontSize: '1.2rem' }}>
+                {selectedPack ? selectedPack.name : `${customCredits} nopins`} — {selectedPack ? selectedPack.price : customCredits * 10},00 MT
               </h4>
             </div>
 
             <div className="form-group">
-              <label className="form-label" style={{ fontWeight: 600 }}>Número de Conta {selectedMethod === 'mpesa' ? 'M-Pesa' : 'e-Mola'} *</label>
+              <label className="form-label" style={{ fontWeight: 600 }}>Número de Celular M-Pesa / e-Mola *</label>
               <input
                 type="text"
-                placeholder={selectedMethod === 'mpesa' ? '+258 84 123 4567' : '+258 86 123 4567'}
+                placeholder="+258 84 123 4567"
                 value={rechargePhone}
                 onChange={(e) => setRechargePhone(e.target.value)}
                 className="form-input"
                 style={{ padding: '12px', borderRadius: '8px', border: '1px solid var(--color-border-dark)' }}
+                required
               />
               <span className="text-xs" style={{ fontSize: '0.7rem', marginTop: '6px', display: 'block', color: 'var(--color-text-muted)', lineHeight: 1.3 }}>
-                Será enviado um pedido de transação (prompt USSD PIN) para o número fornecido de {selectedMethod === 'mpesa' ? 'M-Pesa Vodacom' : 'e-Mola Movitel'}.
+                Introduza o seu número de conta associado ao M-Pesa (Vodacom) ou e-Mola (Movitel). Será enviado um pedido de pagamento por SMS/USSD.
               </span>
             </div>
 
             <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
               <button onClick={() => setRechargeStep(1)} className="btn btn-outline" style={{ flex: 1, height: '44px', fontWeight: 600 }}>Voltar</button>
-              <button onClick={handleRechargeSubmit} className="btn btn-primary" style={{ flex: 2, height: '44px', fontWeight: 600, backgroundColor: selectedMethod === 'mpesa' ? '#e11d48' : '#ea580c', borderColor: selectedMethod === 'mpesa' ? '#e11d48' : '#ea580c' }}>
+              <button
+                onClick={handleRechargeSubmit}
+                className="btn btn-primary"
+                style={{
+                  flex: 2,
+                  height: '44px',
+                  fontWeight: 600,
+                  backgroundColor: selectedMethod === 'mpesa' ? '#e11d48' : '#ea580c',
+                  borderColor: selectedMethod === 'mpesa' ? '#e11d48' : '#ea580c'
+                }}
+              >
                 Pagar com {selectedMethod === 'mpesa' ? 'M-Pesa' : 'e-Mola'}
               </button>
             </div>
           </div>
         )}
 
-        {/* Step 3: Transaction processing spinner */}
+        {/* Step 3: M-Pesa / e-Mola Simulated USSD Prompt Overlay */}
         {rechargeStep === 3 && (
+          <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '16px 8px'
+          }}>
+            {/* Simulated Phone Screen Block */}
+            <div style={{
+              width: '100%',
+              maxWidth: '300px',
+              backgroundColor: '#2e3033', // Dark smartphone theme
+              borderRadius: '16px',
+              padding: '16px',
+              boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.3)',
+              border: '4px solid #1f2022',
+              color: '#ffffff',
+              fontFamily: 'monospace, Courier New',
+              animation: 'slideDown 0.3s ease-out'
+            }}>
+              <div style={{
+                textAlign: 'center',
+                fontWeight: 'bold',
+                fontSize: '0.85rem',
+                borderBottom: '1px solid #4a4d52',
+                paddingBottom: '8px',
+                marginBottom: '12px',
+                color: selectedMethod === 'mpesa' ? '#ff3b30' : '#ff9500',
+                letterSpacing: '1px'
+              }}>
+                {selectedMethod === 'mpesa' ? 'M-PESA VODACOM' : 'E-MOLA MOVITEL'}
+              </div>
+
+              <div style={{ fontSize: '0.8rem', lineHeight: '1.4', marginBottom: '16px' }}>
+                Deseja pagar {selectedPack ? selectedPack.price : customCredits * 10},00 MT à NOPIN LIMITADA?
+                <br /><br />
+                Introduza o seu PIN para confirmar:
+              </div>
+
+              <form onSubmit={handlePinSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <input
+                  type="password"
+                  pattern="[0-9]*"
+                  inputMode="numeric"
+                  maxLength="5"
+                  placeholder="PIN"
+                  value={mpesaPin}
+                  onChange={(e) => setMpesaPin(e.target.value.replace(/[^0-9]/g, ''))}
+                  style={{
+                    width: '100%',
+                    height: '44px',
+                    borderRadius: '6px',
+                    border: '1px solid #4a4d52',
+                    backgroundColor: '#1c1d1f',
+                    color: '#ffffff',
+                    fontSize: '1.4rem',
+                    textAlign: 'center',
+                    letterSpacing: '8px',
+                    outline: 'none',
+                    fontWeight: 'bold'
+                  }}
+                  required
+                  autoFocus
+                />
+
+                {rechargeError && (
+                  <div style={{ color: '#ff3b30', fontSize: '0.7rem', textAlign: 'center', margin: '4px 0' }}>
+                    {rechargeError}
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRechargeStep(2);
+                      setRechargeError('');
+                    }}
+                    style={{
+                      flex: 1,
+                      height: '36px',
+                      backgroundColor: '#4a4d52',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      fontSize: '0.75rem',
+                      fontWeight: 'bold',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    CANCELAR
+                  </button>
+                  <button
+                    type="submit"
+                    style={{
+                      flex: 1,
+                      height: '36px',
+                      backgroundColor: selectedMethod === 'mpesa' ? '#e11d48' : '#ea580c',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      fontSize: '0.75rem',
+                      fontWeight: 'bold',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    CONFIRMAR
+                  </button>
+                </div>
+              </form>
+            </div>
+            
+            <style>{`
+              @keyframes slideDown {
+                0% { transform: translateY(-10px); opacity: 0; }
+                100% { transform: translateY(0); opacity: 1; }
+              }
+            `}</style>
+          </div>
+        )}
+
+        {/* Step 4: Transaction processing spinner */}
+        {rechargeStep === 4 && (
           <div style={{ textAlign: 'center', padding: '32px 0' }}>
             <div className="loading-spinner" style={{
               width: '44px',
@@ -607,15 +978,15 @@ export default function Profile({
               margin: '0 auto 18px auto',
               animation: 'spin 0.8s linear infinite'
             }}></div>
-            <h4 style={{ fontWeight: 700, margin: 0 }}>A Processar Transação...</h4>
+            <h4 style={{ fontWeight: 700, margin: 0 }}>A verificar pagamento...</h4>
             <p className="text-muted" style={{ fontSize: '0.8rem', marginTop: '8px', margin: '8px 0 0 0' }}>
-              Por favor autorize o pedido inserindo o seu PIN no telemóvel associado à carteira {selectedMethod === 'mpesa' ? 'M-Pesa' : 'e-Mola'}.
+              Processando a sua transação com a Vodacom. Aguarde um momento.
             </p>
           </div>
         )}
 
-        {/* Step 4: Success message */}
-        {rechargeStep === 4 && (
+        {/* Step 5: Success message */}
+        {rechargeStep === 5 && (
           <div style={{ textAlign: 'center', padding: '16px 0' }}>
             <div style={{
               width: '56px',
@@ -630,14 +1001,29 @@ export default function Profile({
             }}>
               <CheckCircle size={32} />
             </div>
-            <h3 className="title-h3" style={{ fontSize: '1.2rem', marginBottom: '8px', margin: '0 0 8px 0' }}>Recarga Efetuada!</h3>
-            <p className="text-muted" style={{ fontSize: '0.85rem', marginBottom: '24px', margin: '0 0 24px 0' }}>
-              Adicionado <strong>{selectedPack.credits} nopins</strong> ao seu saldo actual de créditos.
+            <h3 className="title-h3" style={{ fontSize: '1.2rem', marginBottom: '8px', margin: '0 0 8px 0', color: 'var(--color-success)' }}>Compra Confirmada!</h3>
+            <p className="text-muted" style={{ fontSize: '0.85rem', marginBottom: '16px', margin: '0 0 16px 0' }}>
+              Adicionado <strong>{selectedPack ? selectedPack.credits : customCredits} nopins</strong> ao seu saldo actual de créditos.
             </p>
+
+            <div style={{
+              backgroundColor: '#f3f4f6',
+              padding: '12px',
+              borderRadius: '8px',
+              fontSize: '0.75rem',
+              color: '#374151',
+              textAlign: 'left',
+              marginBottom: '20px',
+              lineHeight: '1.4'
+            }}>
+              📧 <strong>Recibo de Pagamento Enviado!</strong>
+              <br />
+              Um e-mail de confirmação foi enviado para <strong>{user.email}</strong> com todos os detalhes desta compra.
+            </div>
+
             <button onClick={() => setActiveModal(null)} className="btn btn-primary" style={{ width: '100%', height: '44px', fontWeight: 600 }}>Concluir</button>
           </div>
         )}
-
       </Modal>
 
       {/* ========================================================================= */}

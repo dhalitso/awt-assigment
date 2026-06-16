@@ -37,8 +37,16 @@ export default async function handler(req, res) {
 
   // Read M-Pesa credentials from Environment variables
   const apiKey = process.env.MPESA_API_KEY;
-  const publicKeyPEM = process.env.MPESA_PUBLIC_KEY; // Public key formatted in PEM (with header/footer)
+  let publicKeyPEM = process.env.MPESA_PUBLIC_KEY; // Public key formatted in PEM (with header/footer)
   const serviceProviderCode = process.env.MPESA_SERVICE_PROVIDER_CODE || '171717'; // default test code
+
+  // Normalize PEM public key format (replace literal \n or \\n and wrap in headers if missing)
+  if (publicKeyPEM && typeof publicKeyPEM === 'string') {
+    publicKeyPEM = publicKeyPEM.replace(/\\n/g, '\n').replace(/\r/g, '');
+    if (!publicKeyPEM.includes('-----BEGIN PUBLIC KEY-----')) {
+      publicKeyPEM = `-----BEGIN PUBLIC KEY-----\n${publicKeyPEM}\n-----END PUBLIC KEY-----`;
+    }
+  }
 
   // If credentials are not set, return simulated success
   if (!apiKey || !publicKeyPEM) {
@@ -49,7 +57,7 @@ export default async function handler(req, res) {
     
     return res.status(200).json({
       status: 'simulated',
-      message: 'Pedido de pagamento M-Pesa enviado! Verifique o telemóvel.',
+      message: 'Simulação: Pedido de pagamento M-Pesa enviado! (Nota: Configure MPESA_API_KEY e MPESA_PUBLIC_KEY no Vercel para acionar pushes reais no telemóvel)',
       transactionId: 'SIM_' + Math.random().toString(36).substring(2, 11).toUpperCase()
     });
   }

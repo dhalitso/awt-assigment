@@ -19,6 +19,7 @@ export default function Profile({
   const [rechargePhone, setRechargePhone] = useState('+258 ');
   const [selectedMethod, setSelectedMethod] = useState('mpesa'); // mpesa, emola
   const [rechargeError, setRechargeError] = useState('');
+  const [transactionMsg, setTransactionMsg] = useState('');
 
   // 2. ID Verification Flow State (9 Steps)
   // 1: Entry, 2: Select Doc, 3: Scan Front, 4: Review Front, 5: Selfie Intro, 6: Scan Selfie, 7: Review Selfie, 8: Submitting, 9: Success
@@ -46,7 +47,7 @@ export default function Profile({
     setRechargeStep(2);
   };
 
-  const sendReceiptEmail = async (creditsPurchased, amountPaid) => {
+  const sendReceiptEmail = async (creditsPurchased, amountPaid, txnId) => {
     const serviceId = import.meta.env.VITE_EMAILJS_SERVICE_ID;
     const templateId = import.meta.env.VITE_EMAILJS_TEMPLATE_ID;
     const publicKey = import.meta.env.VITE_EMAILJS_PUBLIC_KEY;
@@ -56,7 +57,7 @@ export default function Profile({
       return;
     }
 
-    const transactionId = "TXN_" + Math.random().toString(36).substring(2, 11).toUpperCase();
+    const transactionId = txnId || "TXN_" + Math.random().toString(36).substring(2, 11).toUpperCase();
     const formattedDate = new Date().toLocaleString('pt-MZ', { timeZone: 'Africa/Maputo' });
     const message = `COMPRA DE CRÉDITOS CONFIRMADA\n--------------------------------------\nCliente: ${user.name}\nE-mail: ${user.email}\nTelefone: ${rechargePhone}\nData: ${formattedDate}\nID Transação: ${transactionId}\nQuantidade: ${creditsPurchased} Nopins\nValor Pago: ${amountPaid},00 MT\n--------------------------------------\nObrigado por usar o Nopin!`;
 
@@ -85,17 +86,21 @@ export default function Profile({
   };
 
   const handleRechargeSubmit = async () => {
-    // Validate phone number
+    // Validate and normalize phone number
     const cleanNo = rechargePhone.replace(/\s+/g, '');
-    
-    // Accept standard Mozambican numbers (e.g. +258 84/85/87/86/82/83/89...)
-    if (!/^\+2588[2-79]\d{7}$/.test(cleanNo)) {
-      alert('Número inválido. Use o formato: +258 84 123 4567');
+    let standardizedNo = cleanNo.replace(/^\+/, '');
+    if (standardizedNo.length === 9 && standardizedNo.startsWith('8')) {
+      standardizedNo = '258' + standardizedNo;
+    }
+
+    if (!/^2588[2-79]\d{7}$/.test(standardizedNo)) {
+      alert('Número inválido. Insira um número M-Pesa/e-Mola válido de Moçambique (ex: +258 84 123 4567).');
       return;
     }
 
     setRechargeStep(3); // Go to processing (Waiting for M-Pesa push confirmation on phone)
     setRechargeError('');
+    setTransactionMsg('');
 
     const creditsPurchased = selectedPack ? selectedPack.credits : customCredits;
     const amountPaid = selectedPack ? selectedPack.price : customCredits * 10;
@@ -108,7 +113,7 @@ export default function Profile({
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          phone: cleanNo,
+          phone: standardizedNo,
           amount: amountPaid
         })
       });
@@ -121,8 +126,11 @@ export default function Profile({
           credits: user.credits + creditsPurchased
         });
 
-        // Send receipt email to the logged in account email address
-        sendReceiptEmail(creditsPurchased, amountPaid);
+        // Set the transaction message returned from the backend (simulated notice or success detail)
+        setTransactionMsg(result.message || 'Transação concluída com sucesso.');
+
+        // Send receipt email to the logged in account email address with the transaction ID
+        sendReceiptEmail(creditsPurchased, amountPaid, result.transactionId);
         
         setRechargeStep(4); // Show success screen
       } else {
@@ -821,6 +829,28 @@ export default function Profile({
             </div>
 
             <div className="form-group">
+              <label className="form-label" style={{ fontWeight: 600 }}>E-mail de Faturação (Conta Iniciada)</label>
+              <input
+                type="email"
+                value={user.email || ''}
+                disabled
+                className="form-input"
+                style={{
+                  padding: '12px',
+                  borderRadius: '8px',
+                  border: '1px solid var(--color-border)',
+                  backgroundColor: '#f3f4f6',
+                  color: '#6b7280',
+                  cursor: 'not-allowed',
+                  fontWeight: 500
+                }}
+              />
+              <span className="text-xs" style={{ fontSize: '0.7rem', marginTop: '6px', display: 'block', color: 'var(--color-text-muted)', lineHeight: 1.3 }}>
+                O recibo digital será enviado para este e-mail associado às suas credenciais de acesso.
+              </span>
+            </div>
+
+            <div className="form-group">
               <label className="form-label" style={{ fontWeight: 600 }}>Número de Celular M-Pesa / e-Mola *</label>
               <input
                 type="text"
@@ -896,6 +926,12 @@ export default function Profile({
             <p className="text-muted" style={{ fontSize: '0.85rem', marginBottom: '16px', margin: '0 0 16px 0' }}>
               Adicionado <strong>{selectedPack ? selectedPack.credits : customCredits} nopins</strong> ao seu saldo actual de créditos.
             </p>
+
+            {transactionMsg && (
+              <p style={{ fontSize: '0.75rem', color: '#16a34a', margin: '-8px 0 16px 0', fontWeight: 500 }}>
+                {transactionMsg}
+              </p>
+            )}
 
             <div style={{
               backgroundColor: '#f3f4f6',
